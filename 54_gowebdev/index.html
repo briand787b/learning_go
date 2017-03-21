@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Articles</title>
+</head>
+<body>
+    <h1>Recent Articles</h1>
+    <ul>
+        {{range $title, $exists :=  .}}
+            <li><a href="/view/{{$title}}">{{$title}}</a></li>
+        {{end}}
+    </ul>
+</body>
+</html>

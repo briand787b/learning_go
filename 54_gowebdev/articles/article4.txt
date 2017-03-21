@@ -1,0 +1,1 @@
+i made this on sunday also.  This was made after i started using the map to keep records of exisiting articles.  an init function runs to detect pre-existing articles.

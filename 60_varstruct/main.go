@@ -11,6 +11,7 @@ import (
 	"github.com/satori/go.uuid"
 	"os"
 	"encoding/json"
+	"flag"
 )
 
 type drink struct {
@@ -38,25 +39,42 @@ type dbCredentials struct {
 	Password string
 }
 
+type dbConnection struct {
+	Location string
+	IP string
+	Port string
+	Database string
+}
+
 var tpl *template.Template
 var db *sql.DB
 var dbUser dbCredentials
+var dbConxns []dbConnection
+var srvLocation string
 
 func init() {
 	tpl = template.Must(template.ParseGlob("*.html"))
 
-	file, err := os.Open("../credentials.json")
+	credFile, err := os.Open("../credentials.json")
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err = json.NewDecoder(file).Decode(&dbUser); err != nil {
+
+	if err = json.NewDecoder(credFile).Decode(&dbUser); err != nil {
 		log.Fatal(err)
 	}
 
-	db, err = sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(192.168.1.53:3306)/gregs_list", dbUser.Username, dbUser.Password))
-	if err := db.Ping(); err != nil {
-		log.Fatal("error connecting to database", err)
+	conxnFile, err := os.Open("./dbConnections.json")
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	if err = json.NewDecoder(conxnFile).Decode(&dbConxns); err != nil {
+		log.Fatal(err)
+	}
+
+	flag.StringVar(&srvLocation, "location", "home", "consult dbConnections.json for predefined " +
+		"database locations to connect to e.g. home, work")
 }
 
 // This method searches the database for the session id
@@ -296,6 +314,31 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	flag.Parse()
+	if (srvLocation == "") {
+		fmt.Println("Warning, you are choosing the default database location.  If you have connection issues," +
+			" please consult dbConnections.json")
+	}
+
+	// find the database location which matches the name in srvLocation flag
+	// since i don't expect there to be many db locations, i will use a simple search
+	var dbConxn dbConnection
+	for _, dbc := range dbConxns {
+		if dbc.Location == srvLocation {
+			&dbConxn = &dbc
+		}
+	}
+
+	db, _ := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
+		dbUser.Username,
+		dbUser.Password,
+		dbConxn.IP,
+		dbConxn.Port,
+		dbConxn.Database))
+	if err := db.Ping(); err != nil {
+		log.Fatal("error connecting to database", err)
+	}
+
 	defer db.Close()
 
 	http.HandleFunc("/signup/", signUpHandler)

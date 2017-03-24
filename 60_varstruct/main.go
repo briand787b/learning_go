@@ -24,6 +24,7 @@ type drink struct {
 }
 
 type user struct {
+	Id int
 	UserName string
 	Password string
 	LastLoggedIn time.Time
@@ -50,7 +51,7 @@ var tpl *template.Template
 var db *sql.DB
 var dbUser dbCredentials
 var dbConxns []dbConnection
-var srvLocation string
+var srvrLocation string
 
 func init() {
 	tpl = template.Must(template.ParseGlob("*.html"))
@@ -73,7 +74,7 @@ func init() {
 		log.Fatal(err)
 	}
 
-	flag.StringVar(&srvLocation, "location", "home", "consult dbConnections.json for predefined " +
+	flag.StringVar(&srvrLocation, "location", "home", "consult dbConnections.json for predefined " +
 		"database locations to connect to e.g. home, work")
 }
 
@@ -159,7 +160,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
-		fmt.Print("method on login was POST")
+		fmt.Println("method on login was POST")
 
 		uname := r.FormValue("username")
 		if uname == "" {
@@ -174,7 +175,6 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 				"error getting username from form",
 			})
 
-			// http.Error(w, "Error retrieving username from form", http.StatusInternalServerError)
 			return
 		}
 
@@ -191,7 +191,6 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 				"error getting password from form",
 			})
 
-			//http.Error(w, "Error retrieving values from form", http.StatusInternalServerError)
 			return
 		}
 
@@ -206,16 +205,25 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if rows.Next() {
-			fmt.Print("nonzero records returned, username password pair found in database")
+			// user is authenticated, give them a cookie
+			fmt.Println("Nonzero records returned, username password pair found in database")
+			sessionId := uuid.NewV4()
+			ck := http.Cookie { Name: "sessionId", Value: sessionId.String(), Path: "/" }
+			http.SetCookie(w, &ck)
+
+			// store cookie and user association in database
+			var userId int
+			if err = rows.Scan(&userId); err != nil {
+				// grant user access anyway since row->struct scan could just be server error
+				fmt.Print(" error scanning row from db into user struct ")
+			} else {
+				_, err = db.Query(`INSERT INTO sessions (id, user_id, createdDateTime) VALUES (?, ?, ?)`, sessionId, userId, time.Now())
+			}
+
 			http.Redirect(w, r, "/drinks/", http.StatusFound)
 			return
 		} else {
-			fmt.Print(" There were no rows in the database corresponding to that username password pair ")
-
-			// This and the block below it are a huge mess that i don't understand
-			// i need to fix this/understand it because it makes no sense why it works
-			// the way it is now, but doesn't work otherwise
-			// http.Redirect(w, r, "/login", http.StatusFound)
+			fmt.Println(" There were no rows in the database corresponding to that username password pair ")
 
 			tpl.ExecuteTemplate(w, "login.html", struct{
 				Username string
@@ -230,7 +238,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	fmt.Print("method on login was NOT POST")
+	fmt.Println("Method on login was NOT POST")
 
 	ck, err := r.Cookie("session_id")
 	if err != nil {
@@ -268,12 +276,12 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 func signUpHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		fmt.Println("entering signUpHandler method with method: NOT POST")
+		fmt.Println("Entering signUpHandler method with method: NOT POST")
 		tpl.ExecuteTemplate(w, "signup.html", nil)
 		return
 	}
 
-	fmt.Println("entering signUpHandler with method POST")
+	fmt.Println("Entering signUpHandler with method POST")
 
 	err := r.ParseForm()
 	if err != nil {
@@ -315,28 +323,30 @@ func signUpHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
-	if (srvLocation == "") {
+	if srvrLocation == "" {
 		fmt.Println("Warning, you are choosing the default database location.  If you have connection issues," +
 			" please consult dbConnections.json")
 	}
 
-	// find the database location which matches the name in srvLocation flag
+	// find the database location which matches the name in srvrLocation flag
 	// since i don't expect there to be many db locations, i will use a simple search
 	var dbConxn dbConnection
 	for _, dbc := range dbConxns {
-		if dbc.Location == srvLocation {
-			&dbConxn = &dbc
+		if dbc.Location == srvrLocation {
+			dbConxn = dbc
 		}
 	}
 
-	db, _ := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
+	cnxnString := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
 		dbUser.Username,
 		dbUser.Password,
 		dbConxn.IP,
 		dbConxn.Port,
-		dbConxn.Database))
+		dbConxn.Database)
+	fmt.Println("Connecting to ", cnxnString)
+	db, _ = sql.Open("mysql", cnxnString)
 	if err := db.Ping(); err != nil {
-		log.Fatal("error connecting to database", err)
+		log.Fatal(" error connecting to database ", err)
 	}
 
 	defer db.Close()

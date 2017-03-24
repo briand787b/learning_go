@@ -1,16 +1,10 @@
 <component name="libraryTable">
   <library name="GOPATH &lt;udemy&gt;">
     <CLASSES>
-      <root url="file://$PROJECT_DIR$/../../../gopkg.in" />
       <root url="file://$PROJECT_DIR$/../.." />
-      <root url="file://$PROJECT_DIR$/../../../golang.org" />
-      <root url="file://$PROJECT_DIR$/../../../gopl.io" />
     </CLASSES>
     <SOURCES>
-      <root url="file://$PROJECT_DIR$/../../../gopkg.in" />
       <root url="file://$PROJECT_DIR$/../.." />
-      <root url="file://$PROJECT_DIR$/../../../golang.org" />
-      <root url="file://$PROJECT_DIR$/../../../gopl.io" />
     </SOURCES>
     <excluded>
       <root url="file://$PROJECT_DIR$" />

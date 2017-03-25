@@ -12,6 +12,7 @@ import (
 	"os"
 	"encoding/json"
 	"flag"
+	"errors"
 )
 
 type drink struct {
@@ -61,6 +62,7 @@ func init() {
 		log.Fatal(err)
 	}
 
+	defer credFile.Close()
 	if err = json.NewDecoder(credFile).Decode(&dbUser); err != nil {
 		log.Fatal(err)
 	}
@@ -79,16 +81,36 @@ func init() {
 }
 
 // This method searches the database for the session id
-func sessionHelper() {
+func sessionHelper(w http.ResponseWriter, r *http.Request) error {
+	ck, err := r.Cookie("sessionId")
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return errors.New(" could not find sessionId in cookie, redirecting to login ")
+	}
 
-}
+	rows, err := db.Query(`SELECT u.username, u.password FROM sessions s INNER JOIN users u ON s.user_id = u.id WHERE s.id = ?`, ck.Value)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return errors.New(" error querying database for username based on session id from cookie ")
+	}
+	var un, pw string
+	for rows.Next() {
+		err = rows.Scan(&un, &pw)
+		if err != nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return errors.New("error scanning username into variable");
+		}
+	}
 
-// This method
-func validationHelper() {
-
+	return nil
 }
 
 func viewAllHandler(w http.ResponseWriter, r *http.Request) {
+	if err := sessionHelper(w, r); err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	rows, err := db.Query(`SELECT * FROM easy_drinks`)
 	if err != nil {
 		fmt.Print("error: ", err)
@@ -108,33 +130,13 @@ func viewAllHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func viewSingleHandler(w http.ResponseWriter, r *http.Request)  {
-	ck, err := r.Cookie("session_id")
-	if err != nil {
-		fmt.Print("error reading cookie: ", err)
-		http.Redirect(w, r, "/login/", http.StatusForbidden)
+	if err := sessionHelper(w, r); err != nil {
+		fmt.Println(err)
 		return
-	}
-
-	rows, err := db.Query(`SELECT u.username FROM sessions s INNER JOIN users u ON s.user_id = u.id WHERE s.id = ?`, ck.Value)
-	if err != nil {
-		fmt.Printf("error selecting username from uuid %s: %s", ck.Value, err)
-		http.Redirect(w, r, "/login/", http.StatusForbidden)
-		return
-	}
-
-	var uname string
-	for rows.Next() {
-		err = rows.Scan(&uname)
-		if err != nil {
-			fmt.Printf("error converting username from database to string variable: %s", err)
-			http.Redirect(w, r, "/login/", http.StatusForbidden)
-			return
-		}
-
 	}
 
 	drinkName := r.URL.Path[len("/drink/"):]
-	rows, err = db.Query("SELECT * FROM easy_drinks WHERE drink_name = ?", drinkName)
+	rows, err := db.Query("SELECT d.drink_name, d.main, d.amount1, d.second, d.amount2, d.directions FROM easy_drinks d WHERE d.drink_name = ?", drinkName)
 	if err != nil {
 		fmt.Println("error querying drink name from database: ", err)
 		http.Error(w, "Error, drink not found", http.StatusNotFound)
@@ -150,8 +152,12 @@ func viewSingleHandler(w http.ResponseWriter, r *http.Request)  {
 		drinks = append(drinks, rec)
 	}
 
-	tpl.ExecuteTemplate(w, "drinks.html", drinks)
+	if len(drinks) < 1 {
+		fmt.Println("Error: number of drinks returned from database is less than one")
+		http.Redirect(w, r, "/drinks", http.StatusNotFound)
+	}
 
+	tpl.ExecuteTemplate(w, "drink.html", drinks[0])
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
@@ -240,9 +246,9 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Method on login was NOT POST")
 
-	ck, err := r.Cookie("session_id")
+	ck, err := r.Cookie("sessionId")
 	if err != nil {
-		fmt.Print(" could not find session_id in cookie, rendering template ")
+		fmt.Print(" could not find sessionId in cookie, rendering template ")
 		tpl.ExecuteTemplate(w, "login.html", nil)
 		return
 	}
@@ -263,15 +269,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tpl.ExecuteTemplate(w, "login.html", struct{
-		username string
-		password string
-		err string
-	}{
-		un,
-		pw,
-		"",
-	})
+	// user has a valid token, send them to the main page
+	http.Redirect(w, r, "/drinks", http.StatusSeeOther)
 }
 
 func signUpHandler(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Just Starting></title>
+</head>
+<body>
+    <strong>This is Brian's template!</strong>
+    <p>Welcome Student</p>
+    <p>Here are our courses</p>
+    <ul>
+        {{range $INDEX, $ELEMENT := .}}
+        <li>{{$INDEX}} {{$ELEMENT}}</li>
+        {{end}}
+    </ul>
+</body>
+</html>

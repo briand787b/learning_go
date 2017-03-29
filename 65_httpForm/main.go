@@ -10,10 +10,21 @@ import (
 	"database/sql"
 	_ "github.com/go-sql-driver/mysql"
 	"time"
+	"os"
+	"encoding/json"
 )
 
 type user struct {
 	UserName string
+	Password string
+}
+
+type dbConnection struct {
+
+}
+
+type credentials struct {
+	Username string
 	Password string
 }
 
@@ -26,9 +37,25 @@ var db *sql.DB
 var tpl *template.Template
 
 func init() {
+	creds, err := os.Open("../credentials.json")
+	if err != nil {
+		fmt.Println("Error opening credentials.json: ", err)
+		os.Exit(1)
+	}
+	defer creds.Close()
+
+	var dbCreds credentials
+	dec := json.NewDecoder(creds)
+	err = dec.Decode(&dbCreds)
+	if err != nil {
+		fmt.Println("Error parsing the credentials.json file: ", err)
+		os.Exit(1)
+	}
+
 	// Connect to the database
-	db, _ = sql.Open("mysql", "root:P@ssword123!@/second_db")
-	err := db.Ping()
+	dsn := fmt.Sprintf("%s:%s/second_db")
+	db, _ = sql.Open("mysql", dsn)
+	err = db.Ping()
 	if err != nil {
 		log.Fatal("error connecting to database: ", err)
 	}

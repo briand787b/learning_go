@@ -1,0 +1,8 @@
+[
+  {
+    "location": "work",
+    "ip": "10.10.80.152",
+    "port": "3306",
+    "database": "second_db"
+  }
+]

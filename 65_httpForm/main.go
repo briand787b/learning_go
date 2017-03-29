@@ -53,7 +53,7 @@ func init() {
 	}
 
 	// Connect to the database
-	dsn := fmt.Sprintf("%s:%s/second_db")
+	dsn := fmt.Sprintf("%s:%s/second_db", dbCreds.Username, dbCreds.Password)
 	db, _ = sql.Open("mysql", dsn)
 	err = db.Ping()
 	if err != nil {

@@ -1,3 +1,4 @@
 credentials.json
 .idea/
 73_PgInitPackageTest/configuration/*
+*.pem

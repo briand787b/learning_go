@@ -1,13 +1,59 @@
 package main
 
 import (
+	"crypto/rsa"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/auth0/go-jwt-middleware"
+	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"github.com/urfave/negroni"
-	"net/http"
 )
 
+const (
+	privKeyPath = "app.rsa"     // openssl genrsa -out app.rsa keysize
+	pubKeyPath  = "app.rsa.pub" // openssl rsa -in app.rsa -pubout > app.rsa.pub
+)
+
+var (
+	verifyKey *rsa.PublicKey
+	signKey   *rsa.PrivateKey
+)
+
+func init() {
+	signBytes, err := ioutil.ReadFile(privKeyPath)
+	fatal(err)
+
+	signKey, err = jwt.ParseRSAPrivateKeyFromPEM(signBytes)
+	fatal(err)
+
+	verifyBytes, err := ioutil.ReadFile(pubKeyPath)
+	fatal(err)
+
+	verifyKey, err = jwt.ParseRSAPublicKeyFromPEM(verifyBytes)
+	fatal(err)
+}
+
+// remove this function if code ever goes
+// to production.
+func fatal(err error) {
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 func main() {
+	jwtMiddleware := jwtmiddleware.New(jwtmiddleware.Options{
+		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
+			return verifyKey, nil
+		},
+		SigningMethod: jwt.SigningMethodRS256,
+	})
+
 	r := mux.NewRouter()
 
 	authBase := mux.NewRouter()
@@ -31,7 +77,7 @@ func main() {
 
 	homeBase := mux.NewRouter()
 	r.PathPrefix("/").Handler(negroni.New(
-		negroni.HandlerFunc(authmiddleware),
+		negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
 		negroni.Wrap(homeBase),
 	))
 
@@ -56,7 +102,13 @@ func authmiddleware(w http.ResponseWriter, r *http.Request, next http.HandlerFun
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "login")
+	token, err := generateJWT()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("cannot get token: %s", err), 500)
+		return
+	}
+
+	w.Header().Set("Authorization", fmt.Sprintf("Bearer: %s", token))
 }
 
 func logout(w http.ResponseWriter, r *http.Request) {
@@ -69,4 +121,32 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 
 func homeRoute(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "home")
+}
+
+// bool indicates if token from passed request is valid
+func validateToken(r *http.Request) bool {
+	authHeader := r.Header.Get("Authorization")
+	fmt.Println("auth header: ", authHeader)
+
+	if authHeader != "" {
+		return true
+	}
+
+	return false
+}
+
+func generateJWT() (string, error) {
+	// create a signer for rsa 256
+	t := jwt.New(jwt.GetSigningMethod("RS256"))
+
+	// set our claims
+	t.Claims = jwt.StandardClaims{
+		Subject:   "bar",
+		NotBefore: time.Now().Unix(),
+		ExpiresAt: time.Now().Add(1 * time.Minute).Unix(),
+	}
+
+	tokenString, err := t.SignedString(signKey)
+	fmt.Println(tokenString)
+	return tokenString, err
 }
